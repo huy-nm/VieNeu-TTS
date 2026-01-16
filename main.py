@@ -1,102 +1,95 @@
 """
-Demo VieNeuSDK v1.1.3 - Full Features Guide
+VieNeu-TTS SDK Example: Standard Mode (Local Inference)
+
+This example demonstrates how to run VieNeu-TTS locally on your machine.
+Ideal for offline apps, local development, or private deployments.
 """
 
-import time
-import soundfile as sf
 from vieneu import Vieneu
-from pathlib import Path
+import os
 
 def main():
-    print("🚀 Initializing VieNeu SDK (v1.1.3)...")
+    print("🚀 Initializing local VieNeu engine...")
     
-    # Initialize SDK
-    # Default: "pnnbao-ump/VieNeu-TTS-0.3B-q4-gguf" (Speed & CPU Optimized)
-    #
-    # You can change 'backbone_repo' to balance Quality vs Speed:
-    # 1. Better Quality (slower than q4): "pnnbao-ump/VieNeu-TTS-0.3B-q8-gguf"
-    # 2. PyTorch 0.3B (Fast, uncompressed): "pnnbao-ump/VieNeu-TTS-0.3B"
-    # 3. PyTorch 0.5B (Best Quality, heavy): "pnnbao-ump/VieNeu-TTS"
-    # You can also use a GGUF version merged with your own LoRA adapter.
-    # See finetuning guide: https://github.com/pnnbao97/VieNeu-TTS/tree/main/finetune
+    os.makedirs("outputs", exist_ok=True)
     
-    # Mode selection:
-    # - mode="standard" (Default): Runs locally using GGUF (CPU) or PyTorch
-    # - mode="remote": Connects to the LMDeploy server setup above for max speed
-    
+    # ---------------------------------------------------------
+    # PART 1: INITIALIZATION
+    # ---------------------------------------------------------
+    # Mode="standard" (default) runs locally. 
+    # By default, it uses "pnnbao-ump/VieNeu-TTS-0.3B-q4-gguf" (Backbone)
+    # and "neuphonic/distill-neucodec" (Codec) for maximum speed.
     tts = Vieneu()
-    # Or to use Remote mode (Must start 'lmdeploy serve api_server pnnbao-ump/VieNeu-TTS-0.3B --server-port 23333 --tp 1' in another tab/machine first):
-    # tts = Vieneu(model_name="pnnbao-ump/VieNeu-TTS-0.3B", mode="remote", api_base="http://localhost:23333/v1")
-    # Example for using Q8 for better quality:
-    # tts = Vieneu(backbone_repo="pnnbao-ump/VieNeu-TTS-0.3B-q8-gguf")
+    
+    # Optional: If you want to force use a specific PyTorch model:
+    # tts = Vieneu(backbone_repo="pnnbao-ump/VieNeu-TTS-0.3B", codec_repo="neuphonic/distill-neucodec", backbone_device="cuda", codec_device="cuda")
 
     # ---------------------------------------------------------
-    # PART 1: PRESET VOICES
+    # PART 2: LIST PRESET VOICES
     # ---------------------------------------------------------
-    print("\n--- 1. Available Preset Voices ---")
+    # The SDK returns (Description, ID) tuples
     available_voices = tts.list_preset_voices()
-    print("📋 Voices:", available_voices)
+    print(f"📋 Found {len(available_voices)} preset voices.")
     
-    # Select a preset voice
-    current_voice = tts.get_preset_voice("Binh")
-    print("✅ Selected voice: Binh")
-
+    if available_voices:
+        print("   Showing all voices:")
+        for desc, name in available_voices:
+            print(f"   - {desc} (ID: {name})")
 
     # ---------------------------------------------------------
-    # PART 2: CREATE & SAVE CUSTOM VOICE
+    # PART 3: USE SPECIFIC VOICE ID
     # ---------------------------------------------------------
-    print("\n--- 2. Create Custom Voice ---")
-    
-    # Replace with your actual .wav file path and its exact transcript (including punctuation)
-    sample_audio = Path(__file__).parent / "example.wav"
-    sample_text = "ví dụ 2. tính trung bình của dãy số."
+    if available_voices:
+        print("\n--- PART 3: Using Specific Voice ID ---")
+        # Example: Select Tuyên (nam miền Bắc) - usually ID is 'Tuyen'
+        _, my_voice_id = available_voices[1] if len(available_voices) > 1 else available_voices[0]
+        print(f"👤 Selecting voice: {my_voice_id}")
+        
+        # Get reference data for this specific voice
+        voice_data = tts.get_preset_voice(my_voice_id)
+        
+        test_text = f"Chào bạn, tôi đang nói bằng giọng của bác sĩ Tuyên."
+        audio_spec = tts.infer(text=test_text, voice=voice_data)
+        
+        tts.save(audio_spec, f"outputs/standard_{my_voice_id}.wav")
+        print(f"💾 Saved {my_voice_id} synthesis to: outputs/standard_{my_voice_id}.wav")
 
-    if sample_audio.exists():
-        voice_name = "MyCustomVoice"
-        
-        print(f"🎙️ Cloning voice from: {sample_audio.name}")
-        
-        # 'clone_voice' now supports saving directly with 'name' argument
-        custom_voice = tts.clone_voice(
-            audio_path=sample_audio,
-            text=sample_text,
-            name=voice_name  # <-- Automatically saves voice to system
+    # ---------------------------------------------------------
+    # PART 4: STANDARD SPEECH SYNTHESIS (DEFAULT)
+    # ---------------------------------------------------------
+    print("\n--- PART 4: Standard Synthesis (Default) ---")
+    text = "Xin chào, tôi là VieNeu. Tôi có thể giúp bạn đọc sách, làm chatbot thời gian thực, hoặc thậm chí clone giọng nói của bạn."
+    
+    print("🎧 Synthesizing speech...")
+    # By default, it uses the model's 'default_voice'
+    audio = tts.infer(text=text)
+    tts.save(audio, "outputs/standard_output.wav")
+    print("💾 Saved synthesized speech to: outputs/standard_output.wav")
+
+    # ---------------------------------------------------------
+    # PART 5: ZERO-SHOT VOICE CLONING (LOCAL)
+    # ---------------------------------------------------------
+    # You can clone any voice using a short audio sample (3-5s) and its transcript
+    ref_audio = "examples/audio_ref/example_ngoc_huyen.wav"
+    ref_text = "Tác phẩm dự thi bảo đảm tính khoa học, tính đảng, tính chiến đấu, tính định hướng."
+    
+    if os.path.exists(ref_audio):
+        print("\n--- PART 5: Voice Cloning ---")
+        print(f"🦜 Cloning voice from: {ref_audio}")
+        cloned_audio = tts.infer(
+            text="Đây là giọng nói đã được clone thành công từ file mẫu.",
+            ref_audio=ref_audio,
+            ref_text=ref_text
         )
-        
-        print(f"✅ Voice created and saved as: '{voice_name}'")
-        
-        # Verify functionality
-        print("📋 Voice list after adding:", tts.list_preset_voices())
-        
-        # Switch to new voice
-        current_voice = custom_voice
-    else:
-        print("⚠️ Sample audio not found. Skipping...")
-
+        tts.save(cloned_audio, "outputs/standard_cloned_output.wav")
+        print("💾 Saved cloned voice to: outputs/standard_cloned_output.wav")
 
     # ---------------------------------------------------------
-    # PART 3: SYNTHESIS WITH ADVANCED PARAMETERS
+    # PART 6: CLEANUP
     # ---------------------------------------------------------
-    print("\n--- 3. Speech Synthesis ---")
-    
-    text_input = "Xin chào, tôi là VieNeu-TTS. Tôi có thể giúp bạn đọc sách, làm chatbot thời gian thực, hoặc thậm chí clone giọng nói của bạn."
-    
-    # Generate with specific temperature
-    print("🎧 Generating...")
-    audio = tts.infer(
-        text=text_input,
-        voice=current_voice,
-        temperature=1.0,  # Adjustable: Lower (0.1) -> Stable, Higher (1.0+) -> Expressive
-        top_k=50
-    )
-    sf.write("output.wav", audio, 24000)
-    print("💾 Saved: output.wav")
-
-    # ---------------------------------------------------------
-    # CLEANUP
-    # ---------------------------------------------------------
+    # Explicitly release resources
     tts.close()
-    print("\n✅ Done!")
+    print("\n✅ All tasks completed!")
 
 if __name__ == "__main__":
     main()
